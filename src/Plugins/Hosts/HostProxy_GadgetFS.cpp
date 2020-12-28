@@ -10,6 +10,7 @@
 #include <unistd.h>
 #include <poll.h>
 #include <math.h>
+#include <time.h>
 
 #include "GadgetFS_helpers.h"
 #include "errno.h"
@@ -644,10 +645,36 @@ void HostProxy_GadgetFS::setConfig(Configuration *fs_cfg, Configuration *hs_cfg,
 
 				__u8 epAddress = fs_ep->bEndpointAddress;
 
-				int fd = open_endpoint(epAddress, device_filename);
+				int fd = -1, retry = 0;
+				while (fd < 0)
+				{
+					fd = open_endpoint(epAddress, device_filename);
+					if (fd < 0)
+					{
+						fprintf(stderr, "Fail on #%d open EP%02x %d %s\n", retry+1, epAddress, errno, strerror(errno));
+						if (retry < 5) {
+							fprintf(stderr, "Retrying... (waiting for 1 second)");
+							sleep(1);
+						} else {
+							break;
+						}
+					}
+				}
+				int fd;
+				for (int retry = 0; retry < 5; retry++) {
+					if (retry > 0) {
+						fprintf(stderr, "Retrying... (waiting for 1 second)\n");
+						sleep(1);
+					}
+					fd = open_endpoint(epAddress, device_filename);
+					if (fd == 0) {
+						break;
+					}
+					fprintf(stderr, "Fail on #%d open EP%02x %d %s\n", retry+1, epAddress, errno, strerror(errno));
+				}
 				if (fd < 0)
 				{
-					fprintf(stderr, "Fail on open EP%02x %d %s\n", epAddress, errno, strerror(errno));
+					fprintf(stderr, "Fatal!\n");
 					free(buf);
 					return;
 				}
