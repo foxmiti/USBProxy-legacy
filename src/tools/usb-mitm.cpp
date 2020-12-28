@@ -67,6 +67,7 @@ void handle_signal(int signum)
 			memset(&action, 0, sizeof(struct sigaction));
 			action.sa_handler = SIG_DFL;
 			sigaction(SIGTERM, &action, NULL);
+			sigaction(SIGINT, &action, NULL);
 			break;
 		case SIGHUP:
 			fprintf(stderr, "Received SIGHUP, restarting relaying...\n");
