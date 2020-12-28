@@ -29,9 +29,34 @@
 
 using namespace std;
 
+const char *
+manager_status_to_string(Manager_status s)
+{
+	switch (s) {
+	case USBM_IDLE:
+		return "IDLE";
+	case USBM_SETUP:
+		return "SETUP";
+	case USBM_RELAYING:
+		return "RELAYING";
+	case USBM_STOPPING:
+		return "STOPPING";
+	case USBM_SETUP_ABORT:
+		return "SETUP_ABORT";
+	case USBM_RESET:
+		return "RESET";
+	default:
+		return "?";
+	}
+}
+
 Manager::Manager(unsigned debug_level)
 	: _debug_level(debug_level)
 {
+	fprintf(stderr, "Manager::Manager(%d) status='%s'\n",
+		debug_level,
+		manager_status_to_string(status));
+
 	status = USBM_IDLE;
 	plugin_manager = new PluginManager();
 	deviceProxy = NULL;
@@ -57,6 +82,9 @@ Manager::Manager(unsigned debug_level)
 
 Manager::~Manager()
 {
+	fprintf(stderr, "Manager::~Manager() status='%s'\n",
+		manager_status_to_string(status));
+
 	if (device)
 	{
 		delete (device);
@@ -130,6 +158,10 @@ Manager::~Manager()
 
 void Manager::load_plugins(ConfigParser *cfg)
 {
+	fprintf(stderr, "Manager::load_plugins(%p) status='%s'\n",
+		cfg,
+		manager_status_to_string(status));
+
 	plugin_manager->load_plugins(cfg);
 	deviceProxy = plugin_manager->device_proxy;
 	hostProxy = plugin_manager->host_proxy;
@@ -147,6 +179,10 @@ void Manager::load_plugins(ConfigParser *cfg)
 
 void Manager::add_injector(Injector *_injector)
 {
+	fprintf(stderr, "Manager::add_injector(%p) status='%s'\n",
+		_injector,
+		manager_status_to_string(status));
+
 	if (status != USBM_IDLE)
 	{
 		fprintf(stderr, "Can't add injectors unless manager is idle.\n");
@@ -165,6 +201,11 @@ void Manager::add_injector(Injector *_injector)
 
 void Manager::remove_injector(__u8 index, bool freeMemory)
 {
+	fprintf(stderr, "Manager::remove_injector(%d, %d) status='%s'\n",
+		index,
+		freeMemory,
+		manager_status_to_string(status));
+
 	// modified 20141015 atsumi@aizulab.com for reset bust
 	if (status != USBM_IDLE && status != USBM_RESET)
 	{
@@ -197,6 +238,9 @@ void Manager::remove_injector(__u8 index, bool freeMemory)
 
 Injector *Manager::get_injector(__u8 index)
 {
+	fprintf(stderr, "Manager::get_injector(%d) status='%s'\n",
+		index,
+		manager_status_to_string(status));
 	if (!injectors || index >= injectorCount)
 	{
 		return NULL;
@@ -206,12 +250,17 @@ Injector *Manager::get_injector(__u8 index)
 
 __u8 Manager::get_injector_count()
 {
+	fprintf(stderr, "Manager::get_injector_count() status='%s'\n",
+		manager_status_to_string(status));
 	return injectorCount;
 }
 
 void Manager::add_filter(PacketFilter *_filter)
 {
-	// modified 20141015 atsumi@aizulab.com for reset bust
+	fprintf(stderr, "Manager::add_filter(%p) status='%s'\n",
+		_filter,
+		manager_status_to_string(status));
+
 	if (status != USBM_IDLE && status != USBM_RESET)
 	{
 		fprintf(stderr, "Can't add filters unless manager is idle or reset.\n");
@@ -230,7 +279,11 @@ void Manager::add_filter(PacketFilter *_filter)
 
 void Manager::remove_filter(__u8 index, bool freeMemory)
 {
-	// modified 20141015 atsumi@aizulab.com for reset bust
+	fprintf(stderr, "Manager::remove_filter(%d, %d) status='%s'\n",
+		index,
+		freeMemory,
+		manager_status_to_string(status));
+
 	if (status != USBM_IDLE && status != USBM_RESET)
 	{
 		fprintf(stderr, "Can't remove filters unless manager is idle or reset.\n");
@@ -262,6 +315,10 @@ void Manager::remove_filter(__u8 index, bool freeMemory)
 
 PacketFilter *Manager::get_filter(__u8 index)
 {
+	fprintf(stderr, "Manager::get_filter(%d) status='%s'\n",
+		index,
+		manager_status_to_string(status));
+
 	if (!filters || index >= filterCount)
 	{
 		return NULL;
@@ -271,6 +328,8 @@ PacketFilter *Manager::get_filter(__u8 index)
 
 __u8 Manager::get_filter_count()
 {
+	fprintf(stderr, "Manager::get_filter_count() status='%s'\n",
+		manager_status_to_string(status));
 	return filterCount;
 }
 
@@ -311,9 +370,14 @@ inline std::string shex(unsigned num)
 
 void Manager::start_control_relaying()
 {
+	fprintf(stderr, "Manager::start_control_relaying() status='%s': starting...\n",
+		manager_status_to_string(status));
 
 	//TODO this should exit immediately if already started, and wait (somehow) is stopping or setting up
 	status = USBM_SETUP;
+
+	fprintf(stderr, "Manager::start_control_relaying() status='%s': connecting to device proxy...\n",
+		manager_status_to_string(status));
 
 	//connect device proxy
 	int rc = deviceProxy->connect();
@@ -330,6 +394,9 @@ void Manager::start_control_relaying()
 		return;
 	}
 
+	fprintf(stderr, "Manager::start_control_relaying() status='%s': initializing device...\n",
+		manager_status_to_string(status));
+
 	//populate device model
 	device = new Device(deviceProxy);
 	device->print(0);
@@ -340,6 +407,8 @@ void Manager::start_control_relaying()
 	Configuration *cfg;
 	cfg = device->get_active_configuration();
 	int ifc_cnt = cfg->get_descriptor()->bNumInterfaces;
+	fprintf(stderr, "Manager::start_control_relaying() status='%s': claiming %d interfaces to device proxy...\n",
+			manager_status_to_string(status), ifc_cnt);
 	for (int i = 0; i < ifc_cnt; i++)
 	{
 		deviceProxy->claim_interface(i);
@@ -350,6 +419,9 @@ void Manager::start_control_relaying()
 		stop_relaying();
 		return;
 	}
+
+	fprintf(stderr, "Manager::start_control_relaying() status='%s': creating EP0...\n",
+			manager_status_to_string(status));
 
 	//create EP0 endpoint object
 	usb_endpoint_descriptor desc_ep0;
@@ -371,6 +443,9 @@ void Manager::start_control_relaying()
 	out_readers[0] = new RelayReader(out_endpoints[0], hostProxy, _readersend, _writersend);
 	out_writers[0] = new RelayWriter(out_endpoints[0], deviceProxy, this, _readersend, _writersend);
 
+	fprintf(stderr, "Manager::start_control_relaying() status='%s': applying %d filters to relayers...\n",
+				manager_status_to_string(status), filterCount);
+
 	//apply filters to relayers
 	int i;
 	for (i = 0; i < filterCount; i++)
@@ -388,6 +463,9 @@ void Manager::start_control_relaying()
 			}
 		}
 	}
+
+	fprintf(stderr, "Manager::start_control_relaying() status='%s': applying %d injectors to relayers...\n",
+				manager_status_to_string(status), injectorCount);
 
 	//apply injectors to relayers
 	for (i = 0; i < injectorCount; i++)
@@ -422,6 +500,9 @@ void Manager::start_control_relaying()
 		}
 	}
 
+	fprintf(stderr, "Manager::start_control_relaying() status='%s': creating %d injectors threads...\n",
+				manager_status_to_string(status), injectorCount);
+
 	//create injector threads
 	if (injectorCount)
 	{
@@ -437,6 +518,9 @@ void Manager::start_control_relaying()
 		}
 	}
 
+	fprintf(stderr, "Manager::start_control_relaying() status='%s': connecting to host proxy...\n",
+				manager_status_to_string(status));
+
 	rc = hostProxy->connect(device);
 	spinner(0);
 	while (rc == ETIMEDOUT && status == USBM_SETUP)
@@ -450,6 +534,9 @@ void Manager::start_control_relaying()
 		stop_relaying();
 		return;
 	}
+
+	fprintf(stderr, "Manager::start_control_relaying() status='%s': creating r/w relay threads for EP0...\n",
+				manager_status_to_string(status));
 
 	if (out_readers[0])
 	{
@@ -471,16 +558,26 @@ void Manager::start_control_relaying()
 		return;
 	}
 	status = USBM_RELAYING;
+
+	fprintf(stderr, "Manager::start_control_relaying() status='%s': ending...\n",
+				manager_status_to_string(status));
 }
 
 void Manager::start_data_relaying()
 {
+	fprintf(stderr, "Manager::start_data_relaying() status='%s': starting...\n",
+		manager_status_to_string(status));
+
 	//enumerate endpoints
 	Configuration *cfg;
 	cfg = device->get_active_configuration();
 
+
+
 	int ifc_idx;
 	int ifc_cnt = cfg->get_descriptor()->bNumInterfaces;
+	fprintf(stderr, "Manager::start_data_relaying() status='%s': setting up %d interfaces...\n",
+		manager_status_to_string(status), ifc_cnt);
 	for (ifc_idx = 0; ifc_idx < ifc_cnt; ifc_idx++)
 	{
 		// modified 20141010 atsumi@aizulab.com
@@ -521,6 +618,9 @@ void Manager::start_data_relaying()
 		// end
 	}
 
+	fprintf(stderr, "Manager::start_data_relaying() status='%s': initializing 15 r/w relays...\n",
+		manager_status_to_string(status), ifc_cnt);
+
 	int i, j;
 	for (i = 1; i < 16; i++)
 	{
@@ -542,6 +642,9 @@ void Manager::start_data_relaying()
 		}
 	}
 
+	fprintf(stderr, "Manager::start_data_relaying() status='%s': applying %d filters to 15 relayers...\n",
+		manager_status_to_string(status), filterCount);
+
 	//apply filters to relayers
 	for (i = 0; i < filterCount; i++)
 	{
@@ -560,6 +663,9 @@ void Manager::start_data_relaying()
 			}
 		}
 	}
+
+	fprintf(stderr, "Manager::start_data_relaying() status='%s': applying %d injectors to 15 relayers...\n",
+		manager_status_to_string(status), injectorCount);
 
 	//apply injectors to relayers
 	for (i = 0; i < injectorCount; i++)
@@ -598,11 +704,18 @@ void Manager::start_data_relaying()
 		}
 	}
 
+
+	fprintf(stderr, "Manager::start_data_relaying() status='%s': claiming %d interfaces to device proxy...\n",
+		manager_status_to_string(status), ifc_cnt);
+
 	//Claim interfaces
 	for (ifc_idx = 0; ifc_idx < ifc_cnt; ifc_idx++)
 	{
 		deviceProxy->claim_interface(ifc_idx);
 	}
+
+	fprintf(stderr, "Manager::start_data_relaying() status='%s': creating 15 r/w relay threads...\n",
+		manager_status_to_string(status));
 
 	for (i = 1; i < 16; i++)
 	{
@@ -623,10 +736,16 @@ void Manager::start_data_relaying()
 			out_writerThreads[i] = std::thread(&RelayWriter::relay_write, out_writers[i]);
 		}
 	}
+
+	fprintf(stderr, "Manager::start_data_relaying() status='%s': ending...\n",
+		manager_status_to_string(status));
 }
 
 void Manager::stop_relaying()
 {
+	fprintf(stderr, "Manager::stop_relaying() status='%s': starting...\n",
+		manager_status_to_string(status));
+
 	if (status == USBM_SETUP)
 	{
 		status = USBM_SETUP_ABORT;
@@ -636,6 +755,9 @@ void Manager::stop_relaying()
 		return;
 	status = USBM_STOPPING;
 
+	fprintf(stderr, "Manager::stop_relaying() status='%s': stopping %d injector threads...\n",
+		manager_status_to_string(status), injectorCount);
+
 	int i;
 	//signal all injector threads to stop ASAP
 	for (i = 0; i < injectorCount; i++)
@@ -643,6 +765,9 @@ void Manager::stop_relaying()
 		if (injectors[i])
 			injectors[i]->please_stop();
 	}
+
+	fprintf(stderr, "Manager::stop_relaying() status='%s': stoping 16 relayer threads...\n",
+		manager_status_to_string(status));
 
 	//signal all relayer threads to stop ASAP
 	for (i = 0; i < 16; i++)
@@ -665,10 +790,16 @@ void Manager::stop_relaying()
 		}
 	}
 
+	fprintf(stderr, "Manager::stop_relaying() status='%s': waiting %d injector threads...\n",
+		manager_status_to_string(status), injectorCount);
+
 	//wait for all injector threads to stop
 	for (auto &i_thread : injectorThreads)
 		i_thread.join();
 	injectorThreads.clear();
+
+	fprintf(stderr, "Manager::stop_relaying() status='%s': waiting 16 relayer threads...\n",
+		manager_status_to_string(status));
 
 	//wait for all relayer threads to stop, then delete relayer objects
 	for (i = 0; i < 16; i++)
@@ -732,14 +863,23 @@ void Manager::stop_relaying()
 	{
 		Configuration *cfg = device->get_active_configuration();
 		int ifc_cnt = cfg->get_descriptor()->bNumInterfaces;
+		fprintf(stderr, "Manager::stop_relaying() status='%s': realising %d interfaces...\n",
+			manager_status_to_string(status), ifc_cnt);
 		for (ifc_idx = 0; ifc_idx < ifc_cnt; ifc_idx++)
 		{
+
 			deviceProxy->release_interface(ifc_idx);
 		}
 	}
 
+	fprintf(stderr, "Manager::stop_relaying() status='%s': disconnecting from host proxy...\n",
+			manager_status_to_string(status));
+
 	//disconnect from host
 	hostProxy->disconnect();
+
+	fprintf(stderr, "Manager::stop_relaying() status='%s': disconnecting from device proxy...\n",
+			manager_status_to_string(status));
 
 	//disconnect device proxy
 	deviceProxy->disconnect();
@@ -754,10 +894,16 @@ void Manager::stop_relaying()
 	}
 
 	status = USBM_IDLE;
+
+	fprintf(stderr, "Manager::stop_relaying() status='%s': ending...\n",
+		manager_status_to_string(status));
 }
 
 void Manager::setConfig(__u8 index)
 {
+	fprintf(stderr, "Manager::setConfig() status='%s'\n",
+		manager_status_to_string(status));
+
 	device->set_active_configuration(index);
 	DeviceQualifier *qualifier = device->get_device_qualifier();
 	if (qualifier)
@@ -784,6 +930,8 @@ void Manager::setConfig(__u8 index)
 /* Delete all injectors and filters - easier to manage */
 void Manager::cleanup()
 {
+	fprintf(stderr, "Manager::cleanup() status='%s'\n",
+		manager_status_to_string(status));
 	while (injectorCount)
 		remove_injector(injectorCount - 1, true);
 	while (filterCount)
